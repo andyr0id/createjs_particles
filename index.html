@@ -1,0 +1,534 @@
+<!DOCTYPE html>
+<html>
+	<head>
+		<title>Particle test</title>
+		<script type="text/javascript" src="http://code.createjs.com/easeljs-0.4.2.min.js"></script>
+		<script type="text/javascript" src="http://code.createjs.com/tweenjs-0.2.0.min.js"></script>
+		<script type="text/javascript">
+
+			function extend() {
+				if (arguments.length) {
+					var object = arguments[0];
+					for (var i = 1; i < arguments.length; i++) {
+						for (var key in arguments[i]) {
+							object[key] = arguments[i][key];
+						}
+					}
+					return object;
+				}
+				return {};
+			}
+
+			(function(){
+				/**
+				 * A Particle class, basically a circle
+				 */
+				var Particle = function(options){
+					var t = this;
+					t.initialize(options);
+				};
+				var p = Particle.prototype = new Shape();
+				p.Shape_initialize = p.initialize;
+				p.initialize = function(options) {
+					var t = this;
+					t.Shape_initialize();
+					t.maxVelocity = new Point();
+					t.velocity = new Point(Math.random()*10 - 5, Math.random()*10 - 5);
+					t.acceleration = new Point();
+					if (options) for (var i in options) {
+						t[i] = options[i];
+					}
+					t.graphics.beginFill(t.colour);
+					t.graphics.drawCircle(0,0,t.radius);
+				};
+				extend(p, {
+					colour: Graphics.getRGB(0,255,0),
+					radius: 4,
+					velocity: null,
+					maxVelocity: null,
+					acceleration: null,
+					shrinkRate: 0.95,
+					onTick: function() {
+						var t = this;
+						t.velocity.x += t.acceleration.x;
+						t.velocity.y += t.acceleration.y;
+						if (t.maxVelocity.x) {
+							if (t.velocity.x > 0) {
+								t.velocity.x = Math.min(t.velocity.x, t.maxVelocity.x);
+							}
+							else {
+								t.velocity.x = Math.max(t.velocity.x, t.maxVelocity.x*-1);
+							}
+						}
+						if (t.maxVelocity.y) {
+							if (t.velocity.y > 0) {
+								t.velocity.y = Math.min(t.velocity.y, t.maxVelocity.y);
+							}
+							else {
+								t.velocity.y = Math.max(t.velocity.y, t.maxVelocity.y*-1);
+							}
+						}
+						t.x += t.velocity.x;
+						t.y += t.velocity.y;
+						if (t.shrinkRate) {
+							t.scaleX = t.scaleY = t.scaleX * t.shrinkRate;
+							if (t.scaleX < 0.05) t.visible = false;
+						}
+					}
+				});
+				window.Particle = Particle;
+			})();
+
+			(function(){
+				/**
+				 * The particle emitter is a container for all the particles.
+				 * It controls when they are spawned and killed etc
+				 */
+				var ParticleEmitter = function(x, y) {
+					var t = this;
+					t.initialize(x, y);
+				};
+				var p = ParticleEmitter.prototype = new Container();
+				p.Container_initialize = p.initialize;
+				p.initialize = function(x, y) {
+					var t = this;
+					t.Container_initialize();
+					t.x = x;
+					t.y = y;
+					t.particleOptions = {};
+				};
+				extend(p, {
+					rate: 2, //how often to spawn when active
+					active: false, //internal flag
+					particleOptions: null,
+					/**
+					 * Begin emitting particles
+					 */
+					start: function() {
+						var t = this;
+						t.active = true;
+					},
+					/**
+					 * Stop emitting particles
+					 */
+					stop: function() {
+						var t = this;
+						t.active = false;
+					},
+					/**
+					 * Emits a load of particles at once.
+					 * @param int burst 
+					 */
+					burst: function(num) {
+						var t = this,
+							num = num || Math.round(Math.random() * 25) + 25;
+
+						for (var i = 0; i < num; i++) {
+							t.addParticle();
+						}
+					},
+					/**
+					 * Adds a new particle to the simulation
+					 */
+					addParticle: function(options) {
+						var t = this,
+							options = options || {};
+
+						options = extend({
+							colour: Graphics.getRGB(Math.round(Math.random()*255), Math.round(Math.random()*255), Math.round(Math.random()*255))
+						}, t.particleOptions, options);
+						var p = new Particle(options);
+						t.addChild(p);
+					},
+					/**
+					 * Moves the emitter to a new position and maintains the positions of existing particles
+					 */
+					move: function(x, y) {
+						var t = this,
+							diff = new Point(t.x - x, t.y - y);
+
+						var numParticles = t.getNumChildren();
+						for (var i = 0; i < numParticles; i++) {
+							var particle = t.getChildAt(i);
+							particle.x += diff.x;
+							particle.y += diff.y;
+						}
+
+						t.x = x;
+						t.y = y;
+					},
+					/**
+					 * Called every frame
+					 */
+					onTick: function() {
+						var t = this;
+
+						//add new particles
+						if (t.active) {
+							var ticks = Ticker.getTicks();
+							if (ticks % t.rate == 0) {
+								t.addParticle();
+							}
+						}
+
+						//remove old particles
+						var numParticles = t.getNumChildren();
+						var particlesToRemove = [];
+						for (var i = 0; i < numParticles; i++) {
+							var particle = t.getChildAt(i),
+								pt = t.localToGlobal(particle.x, particle.y);
+
+							if ( ! particle.visible) {
+								particlesToRemove.push(particle);
+							}
+							else if (t.parent && t.parent.width) {
+								if (
+									pt.x > t.parent.width
+									|| pt.x < 0
+									|| pt.y > t.parent.height
+									|| pt.y < 0
+								) {
+									particlesToRemove.push(particle);
+								}
+							}
+						}
+						numParticles = particlesToRemove.length;
+						for (var j = 0; j < numParticles; j++) {
+							t.removeChild(particlesToRemove[j]);
+						}
+					}
+				});
+				window.ParticleEmitter = ParticleEmitter;
+			})();
+
+			(function(){
+				/**
+				 * A base class for adding particle emitters
+				 */
+				var System = function(canvasId) {
+					var t = this;
+					t.initialize(canvasId);
+				};
+				var p = System.prototype = new Stage();
+				p.Stage_initialize = p.initialize;
+				p.initialize = function(canvasId) {
+					var t = this;
+					t.Stage_initialize(document.getElementById(canvasId));
+
+					if (t.canvas) {
+						t.width = t.canvas.width;
+						t.height = t.canvas.height;
+					}
+ 
+					//emitters
+					t.emitters = [];
+
+					Ticker.setInterval(17);
+					Ticker.useRAF = true;
+					Ticker.addListener(t);
+				};
+				extend(p, {
+					width: 640,
+					height: 480,
+					emitters: null,
+					/**
+					 * Adds a new particle emitter to the Stage at a specified place
+					 */
+					addEmitter: function(x, y, obeyGravity) {
+						var t = this,
+							pe = new ParticleEmitter(x, y);
+						if (obeyGravity) {
+							extend(pe.particleOptions, {
+								acceleration: new Point(0, 0.1)
+							});
+						}
+						t.addChild(pe);
+						t.emitters.push(pe);
+						return pe;
+					},
+					reset: function() {
+						var t = this;
+						Ticker.removeListener(t);
+						while (t.getNumChildren()) {
+							t.removeChildAt(0);
+						}
+						t.emitters = [];
+					}
+				});
+				window.System = System;
+			})();
+
+			(function(){
+				/**
+				 * Creates continuous emitters on click
+				 */
+				var Continuous = function(canvasId) {
+					var t = this;
+					t.initialize(canvasId);
+				};
+				var p = Continuous.prototype = new System();
+				p.System_initialize = p.initialize;
+				p.initialize = function(canvasId) {
+					var t = this;
+					t.System_initialize(canvasId);
+				};
+				extend(p, {
+					onMouseDown: function() {
+						var t = this,
+							pe = t.addEmitter(t.mouseX, t.mouseY);
+						pe.start();
+					}
+				});
+				window.Continuous = Continuous;
+			})();
+
+			(function(){
+				/**
+				 * Creates a particle burst on click
+				 */
+				var Burster = function(canvasId) {
+					var t = this;
+					t.initialize(canvasId);
+				};
+				var p = Burster.prototype = new System();
+				p.System_initialize = p.initialize;
+				p.initialize = function(canvasId) {
+					var t = this;
+					t.System_initialize(canvasId);
+				};
+				extend(p, {
+					onMouseDown: function() {
+						var t = this,
+							pe = t.addEmitter(t.mouseX, t.mouseY, true);
+						pe.burst();
+					}
+				});
+				window.Burster = Burster;
+			})();
+
+			(function(){
+				/**
+				 * Creates a simulation of a welding torch
+				 */
+				var Welder = function(canvasId) {
+					var t = this;
+					t.initialize(canvasId);
+				};
+				var p = Welder.prototype = new System();
+				p.System_initialize = p.initialize;
+				p.initialize = function(canvasId) {
+					var t = this;
+					t.System_initialize(canvasId);
+					var pe = t.addEmitter(0, 0, true);
+					extend(pe.particleOptions, {
+						colour: Graphics.getRGB(255, 220, 78)
+					});
+					pe.rate = 1;
+				};
+				extend(p, {
+					mouseDown: false,
+					onMouseDown: function() {
+						var t = this;
+						t.mouseDown = true;
+					},
+					onMouseUp: function() {
+						var t = this;
+						t.mouseDown = false;
+					},
+					onTick: function() {
+						var t = this;
+						if (t.mouseDown) {
+							t.emitters[0].move(t.mouseX, t.mouseY);
+							if ( ! t.emitters[0].active) {
+								t.emitters[0].start();
+							}
+							t.leaveMark(t.mouseX, t.mouseY);
+						}
+						else if (t.emitters[0].active) {
+							t.emitters[0].stop();
+						}
+					},
+					leaveMark: function(x, y) {
+						var t = this;
+						var mark = new Shape();
+						mark.graphics.beginFill(Graphics.getRGB(100, 100, 100));
+						mark.graphics.drawCircle(0, 0, 3);
+						mark.x = x;
+						mark.y = y;
+						t.addChild(mark);
+					}
+				});
+				window.Welder = Welder;
+			})();
+
+			(function(){
+				/**
+				 * Creates a Firework display!
+				 */
+				var Fireworks = function(canvasId) {
+					var t = this;
+					t.initialize(canvasId);
+				};
+				var p = Fireworks.prototype = new System();
+				p.System_initialize = p.initialize;
+				p.initialize = function(canvasId) {
+					var t = this;
+					t.System_initialize(canvasId);
+				};
+				extend(p, {
+					mouseDown: false,
+					onMouseDown: function() {
+						var t = this;
+						t.addFirework(t.mouseX, t.mouseY);
+					},
+					addFirework: function(x, y) {
+						var t = this,
+							rocket = new Shape();
+						rocket.graphics.beginFill(Graphics.getRGB(0, 0, 0));
+						rocket.graphics.drawCircle(0, 0, 3);
+						rocket.y = t.height;
+						rocket.x = x;
+						t.addChild(rocket);
+
+						var dist = t.height - y,
+							speed = 0.6,
+							time = dist / speed;
+
+						var tween = Tween.get(rocket).to({y: y}, time, Ease.quadInOut)
+							.call(function(){
+								var pe = t.addEmitter(x, y, true);
+								pe.burst(Math.round(Math.random() * 25) + 75);
+								t.removeChild(rocket);
+							});
+					}
+				});
+				window.Fireworks = Fireworks;
+			})();
+
+			(function(){
+				/**
+				 * Creates Blood splats on click
+				 */
+				var Blood = function(canvasId) {
+					var t = this;
+					t.initialize(canvasId);
+				};
+				var p = Blood.prototype = new System();
+				p.System_initialize = p.initialize;
+				p.initialize = function(canvasId) {
+					var t = this;
+					t.System_initialize(canvasId);
+					t.autoClear = false;
+				};
+				extend(p, {
+					mouseDown: false,
+					onMouseDown: function() {
+						var t = this;
+						t.addBloodSplat(t.mouseX, t.mouseY);
+					},
+					addBloodSplat: function(x, y) {
+						var t = this,
+							splat = new Shape(),
+							pe = t.addEmitter(x, y);
+						splat.graphics.beginFill(Graphics.getRGB(255, 0, 0));
+						splat.graphics.drawCircle(0, 0, 8);
+						splat.x = x;
+						splat.y = y;
+
+						for (var i = 0; i < 3; i++) {
+							var newSplat = splat.clone();
+							newSplat.x += Math.random()*24 - 12;
+							newSplat.y += Math.random()*24 - 12;
+							newSplat.scaleX = newSplat.scaleY = Math.random();
+							t.addChild(newSplat);
+						}
+
+						splat.scaleX = 0.8;
+						splat.scaleY = 0.8;
+						t.addChild(splat);
+
+						extend(pe.particleOptions, {
+							velocity: new Point(0, 0),
+							acceleration: new Point(0, 0.01),
+							maxVelocity: new Point(0, 1),
+							shrinkRate: 0.99,
+							colour: Graphics.getRGB(255, 0, 0)
+						});
+						pe.burst(1);
+
+						var tween = Tween.get(splat).to({scaleX: 1, scaleY: 1}, 1000, Ease.linear);
+					}
+				});
+				window.Blood = Blood;
+			})();
+
+			document.addEventListener('DOMContentLoaded', function() {
+
+				function newCanvas() {
+					var oldC = document.getElementById("stage"+counter);
+					if (oldC) {
+						document.body.removeChild(oldC);
+					}
+					counter++;
+					var c = document.createElement('canvas');
+					c.setAttribute('id', "stage"+counter);
+					c.setAttribute('width', 800);
+					c.setAttribute('height', 600);
+					document.body.appendChild(c);
+				}
+
+				function newSim(simClass) {
+					newCanvas();
+					if (window.s) s.reset();
+					window.s = new simClass("stage"+counter);
+				}
+
+				var counter = 0;
+
+				//tried to do this in a loop, didn't work D:
+				document.getElementById("continuous").addEventListener("click", function(){
+					newSim(Continuous);
+				}, false);
+
+				document.getElementById("burster").addEventListener("click", function(){
+					newSim(Burster);
+				}, false);
+
+				document.getElementById("welder").addEventListener("click", function(){
+					newSim(Welder);
+				}, false);
+
+				document.getElementById("fireworks").addEventListener("click", function(){
+					newSim(Fireworks);
+				}, false);
+
+				document.getElementById("blood").addEventListener("click", function(){
+					newSim(Blood);
+				}, false);
+
+				newSim(Continuous);
+				
+			}, false);
+
+		</script>
+		<style type="text/css">
+			* {
+				font: 16px/20px normal;
+				font-family: Arial, Helvetica, sans-serif;
+			}
+			a {
+				color: #666;
+				text-decoration: none;
+			}
+			a:hover {
+				text-decoration: underline;
+			}
+			canvas {
+				border: #999 1px solid;
+			}
+		</style>
+	</head>
+	<body>
+		<p><a id="continuous" href="#">Continuous</a> | <a id="burster" href="#">Burster</a> | <a id="welder" href="#">Welder</a> | <a id="fireworks" href="#">Fireworks</a> | <a id="blood" href="#">Blood</a></p>
+	</body>
+</html>
