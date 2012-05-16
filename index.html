@@ -4,7 +4,10 @@
 		<title>Particle test</title>
 		<script type="text/javascript" src="http://code.createjs.com/easeljs-0.4.2.min.js"></script>
 		<script type="text/javascript" src="http://code.createjs.com/tweenjs-0.2.0.min.js"></script>
+		<script type="text/javascript" src="js/Vector2D.js"></script>
 		<script type="text/javascript">
+
+			var TWO_PI = Math.PI * 2;
 
 			function extend() {
 				if (arguments.length) {
@@ -33,7 +36,8 @@
 					var t = this;
 					t.Shape_initialize();
 					t.maxVelocity = new Point();
-					t.velocity = new Point(Math.random()*10 - 5, Math.random()*10 - 5);
+					t.velocity = new Vector2D(Math.random()*5, 0);
+					t.velocity.rotate(Math.random()*TWO_PI);
 					t.acceleration = new Point();
 					if (options) for (var i in options) {
 						t[i] = options[i];
